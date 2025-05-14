@@ -18,6 +18,7 @@ from database import get_session
 from models import Submission
 import docx.shared
 import shutil
+import uvicorn
 
 # Настроим логирование
 logging.basicConfig(level=logging.INFO)
@@ -205,3 +206,11 @@ async def get_monthly_stats(session: AsyncSession = Depends(get_session)):
     ]
 
     return response
+
+if __name__ == "__main__":
+    # Чтение порта и хоста из переменных окружения
+    host = os.getenv("HOST", "0.0.0.0")  # 0.0.0.0 чтобы приложение было доступно извне
+    port = int(os.getenv("PORT", 8000))  # По умолчанию порт 8000
+
+    # Запуск сервера с заданными параметрами
+    uvicorn.run("main:app", host=host, port=port, reload=True)
