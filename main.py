@@ -2,7 +2,7 @@ import logging
 import os
 import random
 import string
-from fastapi import FastAPI, UploadFile, Form, Depends
+from fastapi import FastAPI, UploadFile, Form, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.orm import DeclarativeBase
@@ -16,6 +16,8 @@ from sqlalchemy import extract, func
 from datetime import datetime
 from database import get_session
 from models import Submission
+import docx.shared
+import shutil
 
 # Настроим логирование
 logging.basicConfig(level=logging.INFO)
@@ -65,7 +67,7 @@ def add_footer(doc: Document, faculty: str):
     
     # Добавляем текст в нижний колонтитул
     run = paragraph.add_run(f"Тестовый нижний колонтитул: {faculty}")
-    run.font.size = 120000  # размер шрифта
+    run.font.size = 140000  # размер шрифта
     
     # Можно настроить расположение, например, выровнять по центру:
     paragraph.alignment = 1  # 0 - влево, 1 - по центру, 2 - вправо
@@ -77,25 +79,49 @@ def generate_unique_filename(extension=".docx"):
 # Функция для заполнения шаблона Word
 def fill_template(file_path: str, faculty: str):
     logger.info(f"Файл шаблона: {file_path}")
-    # Открываем файл шаблона
     doc = Document(file_path)
 
-    # Заполнение плейсхолдеров
+    # Установка параметров страницы
+    section = doc.sections[0]
+    section.top_margin = 2_000_000     # 2 см
+    section.bottom_margin = 2_000_000  # 2 см
+    section.right_margin = 1_000_000   # 1 см
+
+    # Настройка стиля по умолчанию
+    style = doc.styles['Normal']
+    font = style.font
+    font.name = 'Times New Roman'
+    font.size = docx.shared.Pt(14)
+
+    # Межстрочный интервал и отступ первой строки
     for paragraph in doc.paragraphs:
         if "{{faculty}}" in paragraph.text:
             paragraph.text = paragraph.text.replace("{{faculty}}", faculty)
 
-    # Добавляем нижний колонтитул
+        paragraph.alignment = 3  # Выровнять по ширине
+
+        paragraph_format = paragraph.paragraph_format
+        paragraph_format.first_line_indent = docx.shared.Cm(1.25)
+        paragraph_format.line_spacing = 1.5
+
+        # Если заголовок, центрируем
+        if paragraph.style.name.lower().startswith("heading"):
+            paragraph.alignment = 1  # По центру
+            paragraph_format.space_after = docx.shared.Pt(18)
+
     add_footer(doc, faculty)
 
-    # Генерируем уникальное имя для сохраненного файла
     output_path = os.path.join(TEMP_DIR, generate_unique_filename())
     doc.save(output_path)
     logger.info(f"Сохраненный файл: {output_path}")
     return output_path
 
+def cleanup_temp_dir():
+    shutil.rmtree(TEMP_DIR, ignore_errors=True)
+
 @app.post("/submit")
 async def submit_file(
+    background_tasks: BackgroundTasks,
     file: UploadFile,
     faculty: str = Form(...),
     session: AsyncSession = Depends(get_session)
@@ -134,7 +160,12 @@ async def submit_file(
         session.add(submission)
 
     logger.info(f"Отправляем PDF: {output_pdf_path}")
-    return FileResponse(output_pdf_path, media_type='application/pdf', filename="coursework.pdf")
+    response = FileResponse(output_pdf_path, media_type='application/pdf', filename="coursework.pdf")
+
+    # Добавляем задачу на удаление после отправки ответа
+    background_tasks.add_task(cleanup_temp_dir)
+
+    return response
 
 # Эндпоинт для статистики
 @app.get("/stats")
