@@ -23,7 +23,7 @@ import shutil
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = "postgresql+asyncpg://postgres:2gecf232gecf2@localhost:5432/gostdockeasy"
+DATABASE_URL = "postgresql+asyncpg://gostdockeasy_user:tri4Wq1P0hKuUTAOi0jMx41nHoyGYftL@dpg-d0ido1mmcj7s73dif520-a:5432/gostdockeasy"
 
 # Создание асинхронного движка базы данных
 engine = create_async_engine(DATABASE_URL, echo=True)
